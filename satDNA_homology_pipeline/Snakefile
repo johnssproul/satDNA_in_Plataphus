@@ -1,0 +1,130 @@
+
+
+rule make_fai_index:
+	output:
+		"{dataset}.fa.fai"
+	input:
+		"{dataset}.fa"
+		
+	shell:
+		"samtools faidx {wildcards.dataset}.fa"
+
+
+
+
+
+
+
+
+
+rule cross_homology_ref_preparer:
+	output:
+		"{dataset}.blast.commands"
+
+
+	input:
+		"{dataset}.fa.fai"
+	
+	
+	
+	shell:
+		 "bash scripts/homology_preparer.sh {input} {wildcards.dataset}.fa {output}"
+
+
+
+rule cross_homology:
+	output:
+		"{dataset}.all.hits"
+
+	input:
+		"{dataset}.blast.commands"
+	shell:
+		"bash scripts/cross_homology_runner.sh {input}  {output}"
+		
+		
+		
+rule Within_species_recorpical_homology:
+	output:
+		"{dataset}_between_species_first.txt"
+		
+	input:
+		inp1="{dataset}.all.hits",
+		inp2="{dataset}.fa.fai"
+	
+	
+		
+		
+	shell:
+		"Rscript scripts/between_species_homology_first.R {input.inp1} {input.inp2}  {wildcards.dataset}.species_sample.txt {output}"
+
+
+
+rule dimerized_extracted_first_run:
+	input: 
+		"{dataset}_between_species_first.txt"
+
+
+	output:
+		directory("{dataset}_dimerized_first_run")
+
+	
+	shell:
+		"bash scripts/dimerization_controller.sh {input} {wildcards.dataset}.fa {output}"
+
+
+
+
+
+
+rule cluster_and_filter_within_species:
+	input: 
+		inp1="{dataset}_between_species_first.txt",
+		inp2="{dataset}.fa.fai",
+		inp3="{dataset}_dimerized_first_run"
+		
+		
+	output:
+		"{dataset}_between_species_final.txt"
+		
+	shell:
+		"Rscript scripts/sperating_length.R {input.inp1} {input.inp2} {input.inp3} {output}"
+
+
+
+
+rule dimerized_extracted_final_run:	
+	input: 
+		"{dataset}_between_species_final.txt"
+
+	output:
+		directory("{dataset}_dimerized_final_run")
+
+	
+	shell:
+		"bash scripts/dimerization_controller.sh {input} {wildcards.dataset}.fa {output}"
+
+
+
+rule final_step:
+	input:
+		inp1="{dataset}_dimerized_final_run",
+		inp2="{dataset}_between_species_final.txt",
+		inp3="{dataset}.fa"
+	output:
+		output="{dataset}_final_all.fa"
+	shell:
+		"""	
+		cut -f1 {input.inp2} > list_of_shared_sats.txt
+		grep '>' {input.inp3} | grep -v -F -f list_of_shared_sats.txt - | grep -A1 -w -F -f - {input.inp3} | grep -v '^--' > not_shared.fa
+		sed -i 's/>.*/&_notshared/' not_shared.fa
+		cat {input.inp1}/*_representive.fasta > all_shared.fa
+		cat all_shared.fa not_shared.fa > {output}
+
+
+		"""
+		
+		
+
+
+
+
